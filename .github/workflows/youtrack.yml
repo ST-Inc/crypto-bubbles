@@ -64,7 +64,7 @@ jobs:
           elif [ "$EVENT_NAME" = "pull_request_review" ] && [ "$REVIEW_STATE" = "approved" ]; then
             STATE="Готово к тестированию"
           else
-            STATE="Готово к проверке"
+            STATE="Готово к ревью"
           fi
           echo "Fetching State field from YouTrack"
           ISSUE_JSON="$(curl --fail-with-body --silent --show-error \
