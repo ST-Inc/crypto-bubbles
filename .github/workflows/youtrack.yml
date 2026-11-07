@@ -68,5 +68,6 @@ jobs:
           curl --fail-with-body --request POST \
             --url "$YOUTRACK_URL/api/issues/$ISSUE_ID" \
             --header "Authorization: Bearer $YOUTRACK_TOKEN" \
+            --header "Accept: application/json" \
             --header "Content-Type: application/json" \
             --data "{\"customFields\":[{\"name\":\"State\",\"\$type\":\"StateIssueCustomField\",\"value\":{\"name\":\"$STATE\"}}]}"
