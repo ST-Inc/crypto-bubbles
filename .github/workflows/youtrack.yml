@@ -66,6 +66,7 @@ jobs:
           else
             STATE="Готово к проверке"
           fi
+          echo "Fetching State field from YouTrack"
           ISSUE_JSON="$(curl --fail-with-body --silent --show-error \
             --url "$YOUTRACK_URL/api/issues/$ISSUE_ID?fields=customFields(id,name,%24type,value(id,name))" \
             --header "Authorization: Bearer $YOUTRACK_TOKEN" \
@@ -78,6 +79,7 @@ jobs:
           fi
 
           PAYLOAD="$(jq -n --arg state "$STATE" '{value: {name: $state}}')"
+          echo "Updating State field in YouTrack"
           curl --fail-with-body --silent --show-error --request POST \
             --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/fields/$STATE_FIELD_ID" \
             --header "Authorization: Bearer $YOUTRACK_TOKEN" \
