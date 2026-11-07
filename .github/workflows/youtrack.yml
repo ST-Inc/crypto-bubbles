@@ -96,5 +96,5 @@ jobs:
             --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/customFields/$STATE_FIELD_ID" \
             --header "Authorization: Bearer $YOUTRACK_TOKEN" \
             --header "Accept: application/json" \
-            --header "Content-Type: application/json" \
+            --header "Content-Type: application/json;charset=utf-8" \
             --data-binary "$PAYLOAD"
