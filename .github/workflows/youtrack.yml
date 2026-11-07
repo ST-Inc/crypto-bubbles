@@ -76,8 +76,8 @@ jobs:
           STATE_FIELD_ID="$(printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | .id' | head -n 1)"
           EVENT="$(printf '%s' "$ISSUE_JSON" | jq -c --arg state "$STATE" '.customFields[] | select(.name == "State") | .possibleEvents[] | select(.presentation == $state) | {id, presentation, "$type"}' | head -n 1)"
           if [ -z "$EVENT" ]; then
-            echo "No State transition to: $STATE"
-            exit 1
+            echo "Transition is unavailable; the issue may already be in the target state"
+            exit 0
           fi
           PAYLOAD="$(jq -cn --arg id "$STATE_FIELD_ID" --argjson event "$EVENT" '{id: $id, "$type": "StateMachineIssueCustomField", event: $event}')"
           echo "Applying YouTrack transition: $STATE"
