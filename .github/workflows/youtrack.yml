@@ -90,6 +90,7 @@ jobs:
           else
             PAYLOAD="$(jq -n --arg id "$STATE_FIELD_ID" --arg type "$STATE_FIELD_TYPE" --arg state "$STATE" '{id: $id, name: "State", "$type": $type, value: {name: $state}}')"
           fi
+          echo "YouTrack payload: $PAYLOAD"
           echo "Updating State field in YouTrack"
           curl --fail-with-body --silent --show-error --dump-header - --request POST \
             --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/fields/$STATE_FIELD_ID" \
