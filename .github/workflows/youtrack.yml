@@ -72,5 +72,5 @@ jobs:
             --url "$YOUTRACK_URL/api/commands" \
             --header "Authorization: Bearer $YOUTRACK_TOKEN" \
             --header "Accept: application/json" \
-            --header "Content-Type: application/json;charset=utf-8" \
+            --header "Content-Type: application/json" \
             --data-binary "$PAYLOAD"
