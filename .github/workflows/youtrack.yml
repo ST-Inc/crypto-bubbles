@@ -1,0 +1,72 @@
+name: Update YouTrack issue
+
+on:
+  pull_request:
+    types: [opened, reopened, closed]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  update-youtrack:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       (github.event.action == 'opened' || github.event.action == 'reopened' ||
+        (github.event.action == 'closed' && github.event.pull_request.merged == true))) ||
+      (github.event_name == 'pull_request_review' &&
+       github.event.review.state == 'approved')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add YouTrack link to pull request
+        if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title || '';
+            const branch = context.payload.pull_request.head.ref || '';
+            const match = `${title}\n${branch}`.match(/[A-Z][A-Z0-9]+-\d+/);
+            if (!match) return;
+
+            const issue = match[0];
+            const url = `${process.env.YOUTRACK_URL}/issue/${issue}`;
+            const body = context.payload.pull_request.body || '';
+            if (body.includes(url)) return;
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body: `${body}\n\nYouTrack: [${issue}](${url})`
+            });
+        env:
+          YOUTRACK_URL: ${{ secrets.YOUTRACK_URL }}
+
+      - name: Update linked YouTrack issue
+        env:
+          YOUTRACK_URL: ${{ secrets.YOUTRACK_URL }}
+          YOUTRACK_TOKEN: ${{ secrets.YOUTRACK_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          REVIEW_STATE: ${{ github.event.review.state }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+        run: |
+          set -eu
+          ISSUE_ID="$(printf '%s\n%s' "$PR_TITLE" "$PR_BRANCH" | grep -Eo '[A-Z][A-Z0-9]+-[0-9]+' | head -n 1 || true)"
+          if [ -z "$ISSUE_ID" ]; then exit 0; fi
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$EVENT_ACTION" = "closed" ] && [ "$PR_MERGED" = "true" ]; then
+            STATE="На тестировании"
+          elif [ "$EVENT_NAME" = "pull_request_review" ] && [ "$REVIEW_STATE" = "approved" ]; then
+            STATE="Готово к тестированию"
+          else
+            STATE="Готово к проверке"
+          fi
+          curl --fail-with-body --request POST \
+            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID" \
+            --header "Authorization: Bearer $YOUTRACK_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "{\"customFields\":[{\"name\":\"State\",\"\$type\":\"StateIssueCustomField\",\"value\":{\"name\":\"$STATE\"}}]}"
