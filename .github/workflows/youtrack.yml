@@ -73,15 +73,16 @@ jobs:
             --header "Accept: application/json")"
 
           STATE_FIELD_ID="$(printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | .id' | head -n 1)"
-          if [ -z "$STATE_FIELD_ID" ] || [ "$STATE_FIELD_ID" = "null" ]; then
+          STATE_FIELD_TYPE="$(printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | ."$type"' | head -n 1)"
+          if [ -z "$STATE_FIELD_ID" ] || [ "$STATE_FIELD_ID" = "null" ] || [ -z "$STATE_FIELD_TYPE" ] || [ "$STATE_FIELD_TYPE" = "null" ]; then
             echo "State field was not found on $ISSUE_ID"
             exit 1
           fi
 
-          PAYLOAD="$(jq -n --arg state "$STATE" '{value: {name: $state}}')"
+          PAYLOAD="$(jq -n --arg id "$STATE_FIELD_ID" --arg type "$STATE_FIELD_TYPE" --arg state "$STATE" '{id: $id, name: "State", "$type": $type, value: {name: $state}}')"
           echo "Updating State field in YouTrack"
           curl --fail-with-body --silent --show-error --request POST \
-            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/customFields/$STATE_FIELD_ID" \
+            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/fields/$STATE_FIELD_ID" \
             --header "Authorization: Bearer $YOUTRACK_TOKEN" \
             --header "Accept: application/json" \
             --json "$PAYLOAD"
