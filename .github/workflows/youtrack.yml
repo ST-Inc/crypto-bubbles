@@ -66,9 +66,20 @@ jobs:
           else
             STATE="Готово к проверке"
           fi
-          curl --fail-with-body --request POST \
-            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID" \
+          ISSUE_JSON="$(curl --fail-with-body --silent --show-error \
+            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID?fields=customFields(id,name,%24type,value(id,name))" \
+            --header "Authorization: Bearer $YOUTRACK_TOKEN" \
+            --header "Accept: application/json")"
+
+          STATE_FIELD_ID="$(printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | .id' | head -n 1)"
+          if [ -z "$STATE_FIELD_ID" ] || [ "$STATE_FIELD_ID" = "null" ]; then
+            echo "State field was not found on $ISSUE_ID"
+            exit 1
+          fi
+
+          PAYLOAD="$(jq -n --arg state "$STATE" '{value: {name: $state}}')"
+          curl --fail-with-body --silent --show-error --request POST \
+            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/fields/$STATE_FIELD_ID" \
             --header "Authorization: Bearer $YOUTRACK_TOKEN" \
             --header "Accept: application/json" \
-            --header "Content-Type: application/json; charset=utf-8" \
-            --data-raw "{\"customFields\":[{\"name\":\"State\",\"\$type\":\"StateIssueCustomField\",\"value\":{\"name\":\"$STATE\"}}]}"
+            --json "$PAYLOAD"
