@@ -66,34 +66,10 @@ jobs:
           else
             STATE="Готово к ревью"
           fi
-          echo "Fetching State field from YouTrack"
-          ISSUE_JSON="$(curl --fail-with-body --silent --show-error \
-            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID?fields=customFields(id,name,%24type,value(id,name),possibleEvents(id,presentation,%24type))" \
-            --header "Authorization: Bearer $YOUTRACK_TOKEN" \
-            --header "Accept: application/json")"
-
-          STATE_FIELD_ID="$(printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | .id' | head -n 1)"
-          STATE_FIELD_TYPE="$(printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | ."$type"' | head -n 1)"
-          if [ -z "$STATE_FIELD_ID" ] || [ "$STATE_FIELD_ID" = "null" ] || [ -z "$STATE_FIELD_TYPE" ] || [ "$STATE_FIELD_TYPE" = "null" ]; then
-            echo "State field was not found on $ISSUE_ID"
-            exit 1
-          fi
-
-          if [ "$STATE_FIELD_TYPE" = "StateMachineIssueCustomField" ]; then
-            printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | .possibleEvents[]?.presentation' | sed 's/^/Available transition: /'
-            EVENT="$(printf '%s' "$ISSUE_JSON" | jq -c --arg state "$STATE" '.customFields[] | select(.name == "State") | .possibleEvents[] | select(.presentation == $state) | {id, presentation, "$type"}' | head -n 1)"
-            if [ -z "$EVENT" ]; then
-              echo "No State transition to: $STATE"
-              exit 1
-            fi
-            PAYLOAD="$(jq -n --arg id "$STATE_FIELD_ID" --arg type "$STATE_FIELD_TYPE" --argjson event "$EVENT" '{id: $id, "$type": $type, event: $event}')"
-          else
-            PAYLOAD="$(jq -n --arg id "$STATE_FIELD_ID" --arg type "$STATE_FIELD_TYPE" --arg state "$STATE" '{id: $id, name: "State", "$type": $type, value: {name: $state}}')"
-          fi
-          echo "YouTrack payload: $PAYLOAD"
-          echo "Updating State field in YouTrack"
+          PAYLOAD="$(jq -n --arg query "$STATE" --arg issue "$ISSUE_ID" '{query: $query, issues: [{idReadable: $issue}]}')"
+          echo "Applying YouTrack transition: $STATE"
           curl --fail-with-body --silent --show-error --dump-header - --request POST \
-            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/customFields/$STATE_FIELD_ID" \
+            --url "$YOUTRACK_URL/api/commands" \
             --header "Authorization: Bearer $YOUTRACK_TOKEN" \
             --header "Accept: application/json" \
             --header "Content-Type: application/json;charset=utf-8" \
