@@ -67,9 +67,10 @@ jobs:
             STATE="Готово к ревью"
           fi
           echo "Applying YouTrack transition: $STATE"
+          PAYLOAD="$(jq --ascii-output --compact-output --null-input --arg query "$STATE" --arg issue "$ISSUE_ID" '{query: $query, issues: [{idReadable: $issue}]}' )"
           curl --fail-with-body --silent --show-error --dump-header - --request POST \
             --url "$YOUTRACK_URL/api/commands" \
             --header "Authorization: Bearer $YOUTRACK_TOKEN" \
             --header "Accept: application/json" \
             --header "Content-Type: application/json" \
-            --data "{\"query\":\"$STATE\",\"issues\":[{\"idReadable\":\"$ISSUE_ID\"}]}"
+            --data-raw "$PAYLOAD"
