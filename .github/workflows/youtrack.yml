@@ -81,7 +81,7 @@ jobs:
           PAYLOAD="$(jq -n --arg state "$STATE" '{value: {name: $state}}')"
           echo "Updating State field in YouTrack"
           curl --fail-with-body --silent --show-error --request POST \
-            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/fields/$STATE_FIELD_ID" \
+            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/customFields/$STATE_FIELD_ID" \
             --header "Authorization: Bearer $YOUTRACK_TOKEN" \
             --header "Accept: application/json" \
             --json "$PAYLOAD"
