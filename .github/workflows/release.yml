@@ -85,7 +85,7 @@ jobs:
           set -eu
           YOUTRACK_URL="$(printf '%s' "$YOUTRACK_URL" | tr -d '\r\n')"
           YOUTRACK_TOKEN="$(printf '%s' "$YOUTRACK_TOKEN" | tr -d '\r\n')"
-          ISSUE_JSON="$(git log --format=%B "$BASE_SHA..$MERGE_SHA" | grep -Eo '[A-Z][A-Z0-9]+-[0-9]+' | sort -u | jq -R . | jq -sc 'map({idReadable: .)}')"
+          ISSUE_JSON="$(git log --format=%B "$BASE_SHA..$MERGE_SHA" | grep -Eo '[A-Z][A-Z0-9]+-[0-9]+' | sort -u | jq -R . | jq -sc 'map({idReadable: .})')"
           if [ "$ISSUE_JSON" = "[]" ]; then
             echo "No YouTrack issue IDs found in release commits"
             exit 0
