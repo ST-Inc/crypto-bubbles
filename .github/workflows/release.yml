@@ -31,7 +31,7 @@ jobs:
 
       - name: Create release branch and pull request
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_TITLE: ${{ inputs.title }}
         run: |
@@ -67,7 +67,7 @@ jobs:
 
       - name: Create GitHub Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
           RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
