@@ -97,7 +97,7 @@ jobs:
               --header "Authorization: Bearer $YOUTRACK_TOKEN" \
               --header "Accept: application/json")"
             STATE_FIELD_ID="$(printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | .id' | head -n 1)"
-            EVENT="$(printf '%s' "$ISSUE_JSON" | jq -c '.customFields[] | select(.name == "State") | .possibleEvents[]? | select(.presentation == "Готово") | {id, presentation, "$type"}' | head -n 1)"
+            EVENT="$(printf '%s' "$ISSUE_JSON" | jq -c '.customFields[] | select(.name == "State") | .possibleEvents[]? | select(.presentation == "Done") | {id, presentation, "$type"}' | head -n 1)"
             if [ -z "$STATE_FIELD_ID" ] || [ "$STATE_FIELD_ID" = "null" ] || [ -z "$EVENT" ]; then
               echo "Cannot move $ISSUE_ID to Готово. Current state and allowed transitions:"
               printf '%s' "$ISSUE_JSON" | jq '.customFields[] | select(.name == "State") | {state: .value.name, transitions: [.possibleEvents[]?.presentation]}'
