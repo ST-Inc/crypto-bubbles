@@ -1,0 +1,92 @@
+name: Prepare and publish release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, for example 1.2.0'
+        required: true
+        type: string
+      title:
+        description: 'Optional release title'
+        required: false
+        type: string
+  pull_request:
+    branches: [master]
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: developing
+          fetch-depth: 0
+
+      - name: Create release branch and pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_TITLE: ${{ inputs.title }}
+        run: |
+          set -eu
+          case "$RELEASE_VERSION" in
+            *[!0-9A-Za-z.-]*|'') echo "Invalid release version"; exit 1 ;;
+          esac
+          BRANCH="release/v$RELEASE_VERSION"
+          git switch -c "$BRANCH"
+          git push origin "$BRANCH"
+          gh pr create \
+            --base master \
+            --head "$BRANCH" \
+            --title "Release v$RELEASE_VERSION" \
+            --body "Release candidate v$RELEASE_VERSION."
+
+  publish-release:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -eu
+          VERSION="${RELEASE_BRANCH#release/v}"
+          gh release create "v$VERSION" --target "$MERGE_SHA" --generate-notes --title "v$VERSION"
+
+      - name: Mark released YouTrack issues as Done
+        env:
+          YOUTRACK_URL: ${{ secrets.YOUTRACK_URL }}
+          YOUTRACK_TOKEN: ${{ secrets.YOUTRACK_TOKEN }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -eu
+          YOUTRACK_URL="$(printf '%s' "$YOUTRACK_URL" | tr -d '\r\n')"
+          YOUTRACK_TOKEN="$(printf '%s' "$YOUTRACK_TOKEN" | tr -d '\r\n')"
+          ISSUE_JSON="$(git log --format=%B "$BASE_SHA..$MERGE_SHA" | grep -Eo '[A-Z][A-Z0-9]+-[0-9]+' | sort -u | jq -R . | jq -sc 'map({idReadable: .)}')"
+          if [ "$ISSUE_JSON" = "[]" ]; then
+            echo "No YouTrack issue IDs found in release commits"
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error --request POST \
+            --url "$YOUTRACK_URL/api/commands" \
+            --header "Authorization: Bearer $YOUTRACK_TOKEN" \
+            --header "Accept: application/json" \
+            --header "Content-Type: application/json" \
+            --data "{\"query\":\"Готово\",\"issues\":$ISSUE_JSON}"
