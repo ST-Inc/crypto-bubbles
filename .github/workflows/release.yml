@@ -40,8 +40,14 @@ jobs:
             *[!0-9A-Za-z.-]*|'') echo "Invalid release version"; exit 1 ;;
           esac
           BRANCH="release/v$RELEASE_VERSION"
-          git switch -c "$BRANCH"
-          git push origin "$BRANCH"
+          if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git switch -c "$BRANCH"
+            git push origin "$BRANCH"
+          fi
+          if gh pr list --head "$BRANCH" --base master --state open --json url --jq '.[0].url' | grep -q .; then
+            echo "Release pull request already exists"
+            exit 0
+          fi
           gh pr create \
             --base master \
             --head "$BRANCH" \
