@@ -85,14 +85,32 @@ jobs:
           set -eu
           YOUTRACK_URL="$(printf '%s' "$YOUTRACK_URL" | tr -d '\r\n')"
           YOUTRACK_TOKEN="$(printf '%s' "$YOUTRACK_TOKEN" | tr -d '\r\n')"
-          ISSUE_JSON="$(git log --format=%B "$BASE_SHA..$MERGE_SHA" | grep -Eo '[A-Z][A-Z0-9]+-[0-9]+' | sort -u | jq -R . | jq -sc 'map({idReadable: .})')"
-          if [ "$ISSUE_JSON" = "[]" ]; then
+          ISSUE_IDS="$(git log --format=%B "$BASE_SHA..$MERGE_SHA" | grep -Eo '[A-Z][A-Z0-9]+-[0-9]+' | sort -u || true)"
+          if [ -z "$ISSUE_IDS" ]; then
             echo "No YouTrack issue IDs found in release commits"
             exit 0
           fi
-          curl --fail-with-body --silent --show-error --request POST \
-            --url "$YOUTRACK_URL/api/commands" \
-            --header "Authorization: Bearer $YOUTRACK_TOKEN" \
-            --header "Accept: application/json" \
-            --header "Content-Type: application/json" \
-            --data "{\"query\":\"Готово\",\"issues\":$ISSUE_JSON}"
+
+          while IFS= read -r ISSUE_ID; do
+            ISSUE_JSON="$(curl --fail-with-body --silent --show-error \
+              --url "$YOUTRACK_URL/api/issues/$ISSUE_ID?fields=customFields(id,name,%24type,value(name),possibleEvents(id,presentation,%24type))" \
+              --header "Authorization: Bearer $YOUTRACK_TOKEN" \
+              --header "Accept: application/json")"
+            STATE_FIELD_ID="$(printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | .id' | head -n 1)"
+            EVENT="$(printf '%s' "$ISSUE_JSON" | jq -c '.customFields[] | select(.name == "State") | .possibleEvents[]? | select(.presentation == "Готово") | {id, presentation, "$type"}' | head -n 1)"
+            if [ -z "$STATE_FIELD_ID" ] || [ "$STATE_FIELD_ID" = "null" ] || [ -z "$EVENT" ]; then
+              echo "Cannot move $ISSUE_ID to Готово. Current state and allowed transitions:"
+              printf '%s' "$ISSUE_JSON" | jq '.customFields[] | select(.name == "State") | {state: .value.name, transitions: [.possibleEvents[]?.presentation]}'
+              exit 1
+            fi
+            PAYLOAD="$(jq -cn --arg id "$STATE_FIELD_ID" --argjson event "$EVENT" '{id: $id, "$type": "StateMachineIssueCustomField", event: $event}')"
+            curl --fail-with-body --silent --show-error --request POST \
+              --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/fields/$STATE_FIELD_ID" \
+              --header "Authorization: Bearer $YOUTRACK_TOKEN" \
+              --header "Accept: application/json" \
+              --header "Content-Type: application/json" \
+              --data-raw "$PAYLOAD"
+            echo "Moved $ISSUE_ID to Готово"
+          done <<EOF
+          $ISSUE_IDS
+          EOF
