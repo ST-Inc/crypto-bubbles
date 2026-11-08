@@ -31,7 +31,7 @@ jobs:
 
       - name: Create release branch and pull request
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_TITLE: ${{ inputs.title }}
         run: |
@@ -40,8 +40,14 @@ jobs:
             *[!0-9A-Za-z.-]*|'') echo "Invalid release version"; exit 1 ;;
           esac
           BRANCH="release/v$RELEASE_VERSION"
-          git switch -c "$BRANCH"
-          git push origin "$BRANCH"
+          if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git switch -c "$BRANCH"
+            git push origin "$BRANCH"
+          fi
+          if gh pr list --head "$BRANCH" --base master --state open --json url --jq '.[0].url' | grep -q .; then
+            echo "Release pull request already exists"
+            exit 0
+          fi
           gh pr create \
             --base master \
             --head "$BRANCH" \
@@ -61,7 +67,7 @@ jobs:
 
       - name: Create GitHub Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
           RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
