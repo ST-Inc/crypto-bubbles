@@ -1,0 +1,87 @@
+name: Update YouTrack issue
+
+on:
+  pull_request:
+    types: [review_requested]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  update-youtrack:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.action == 'review_requested') ||
+      (github.event_name == 'pull_request_review' &&
+       github.event.review.state == 'approved')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add YouTrack link to pull request
+        if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title || '';
+            const branch = context.payload.pull_request.head.ref || '';
+            const match = `${title}\n${branch}`.match(/[A-Z][A-Z0-9]+-\d+/);
+            if (!match) return;
+
+            const issue = match[0];
+            const url = `${process.env.YOUTRACK_URL}/issue/${issue}`;
+            const body = context.payload.pull_request.body || '';
+            if (body.includes(url)) return;
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body: `${body}\n\nYouTrack: [${issue}](${url})`
+            });
+        env:
+          YOUTRACK_URL: ${{ secrets.YOUTRACK_URL }}
+
+      - name: Update linked YouTrack issue
+        env:
+          YOUTRACK_URL: ${{ secrets.YOUTRACK_URL }}
+          YOUTRACK_TOKEN: ${{ secrets.YOUTRACK_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          REVIEW_STATE: ${{ github.event.review.state }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+        run: |
+          set -eu
+          YOUTRACK_URL="$(printf '%s' "$YOUTRACK_URL" | tr -d '\r\n')"
+          YOUTRACK_TOKEN="$(printf '%s' "$YOUTRACK_TOKEN" | tr -d '\r\n')"
+          ISSUE_IDS="$(printf '%s\n%s' "$PR_TITLE" "$PR_BRANCH" | grep -Eo '[A-Z][A-Z0-9]+-[0-9]+' | sort -u || true)"
+          if [ -z "$ISSUE_IDS" ]; then exit 0; fi
+          if [ "$EVENT_NAME" = "pull_request_review" ] && [ "$REVIEW_STATE" = "approved" ]; then
+            STATE="Готово к тестированию"
+          else
+            STATE="Готово к ревью"
+          fi
+          for ISSUE_ID in $ISSUE_IDS; do
+            echo "Fetching $ISSUE_ID transition: $STATE"
+            ISSUE_JSON="$(curl --fail-with-body --silent --show-error \
+              --url "$YOUTRACK_URL/api/issues/$ISSUE_ID?fields=customFields(id,name,%24type,possibleEvents(id,presentation,%24type))" \
+              --header "Authorization: Bearer $YOUTRACK_TOKEN" \
+              --header "Accept: application/json")"
+            STATE_FIELD_ID="$(printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | .id' | head -n 1)"
+            EVENT="$(printf '%s' "$ISSUE_JSON" | jq -c --arg state "$STATE" '.customFields[] | select(.name == "State") | .possibleEvents[] | select(.presentation == $state) | {id, presentation, "$type"}' | head -n 1)"
+            if [ -z "$EVENT" ]; then
+              echo "$ISSUE_ID transition is unavailable; skipping it"
+              continue
+            fi
+            PAYLOAD="$(jq -cn --arg id "$STATE_FIELD_ID" --argjson event "$EVENT" '{id: $id, "$type": "StateMachineIssueCustomField", event: $event}')"
+            echo "Applying $ISSUE_ID transition: $STATE"
+            curl --fail-with-body --silent --show-error --dump-header - --request POST \
+              --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/fields/$STATE_FIELD_ID" \
+              --header "Authorization: Bearer $YOUTRACK_TOKEN" \
+              --header "Accept: application/json" \
+              --header "Content-Type: application/json" \
+              --data-raw "$PAYLOAD"
+          done
