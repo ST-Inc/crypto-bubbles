@@ -57,29 +57,31 @@ jobs:
           set -eu
           YOUTRACK_URL="$(printf '%s' "$YOUTRACK_URL" | tr -d '\r\n')"
           YOUTRACK_TOKEN="$(printf '%s' "$YOUTRACK_TOKEN" | tr -d '\r\n')"
-          ISSUE_ID="$(printf '%s\n%s' "$PR_TITLE" "$PR_BRANCH" | grep -Eo '[A-Z][A-Z0-9]+-[0-9]+' | head -n 1 || true)"
-          if [ -z "$ISSUE_ID" ]; then exit 0; fi
+          ISSUE_IDS="$(printf '%s\n%s' "$PR_TITLE" "$PR_BRANCH" | grep -Eo '[A-Z][A-Z0-9]+-[0-9]+' | sort -u || true)"
+          if [ -z "$ISSUE_IDS" ]; then exit 0; fi
           if [ "$EVENT_NAME" = "pull_request_review" ] && [ "$REVIEW_STATE" = "approved" ]; then
             STATE="Готово к тестированию"
           else
             STATE="Готово к ревью"
           fi
-          echo "Fetching State transition: $STATE"
-          ISSUE_JSON="$(curl --fail-with-body --silent --show-error \
-            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID?fields=customFields(id,name,%24type,possibleEvents(id,presentation,%24type))" \
-            --header "Authorization: Bearer $YOUTRACK_TOKEN" \
-            --header "Accept: application/json")"
-          STATE_FIELD_ID="$(printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | .id' | head -n 1)"
-          EVENT="$(printf '%s' "$ISSUE_JSON" | jq -c --arg state "$STATE" '.customFields[] | select(.name == "State") | .possibleEvents[] | select(.presentation == $state) | {id, presentation, "$type"}' | head -n 1)"
-          if [ -z "$EVENT" ]; then
-            echo "Transition is unavailable; the issue may already be in the target state"
-            exit 0
-          fi
-          PAYLOAD="$(jq -cn --arg id "$STATE_FIELD_ID" --argjson event "$EVENT" '{id: $id, "$type": "StateMachineIssueCustomField", event: $event}')"
-          echo "Applying YouTrack transition: $STATE"
-          curl --fail-with-body --silent --show-error --dump-header - --request POST \
-            --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/fields/$STATE_FIELD_ID" \
-            --header "Authorization: Bearer $YOUTRACK_TOKEN" \
-            --header "Accept: application/json" \
-            --header "Content-Type: application/json" \
-            --data-raw "$PAYLOAD"
+          for ISSUE_ID in $ISSUE_IDS; do
+            echo "Fetching $ISSUE_ID transition: $STATE"
+            ISSUE_JSON="$(curl --fail-with-body --silent --show-error \
+              --url "$YOUTRACK_URL/api/issues/$ISSUE_ID?fields=customFields(id,name,%24type,possibleEvents(id,presentation,%24type))" \
+              --header "Authorization: Bearer $YOUTRACK_TOKEN" \
+              --header "Accept: application/json")"
+            STATE_FIELD_ID="$(printf '%s' "$ISSUE_JSON" | jq -r '.customFields[] | select(.name == "State") | .id' | head -n 1)"
+            EVENT="$(printf '%s' "$ISSUE_JSON" | jq -c --arg state "$STATE" '.customFields[] | select(.name == "State") | .possibleEvents[] | select(.presentation == $state) | {id, presentation, "$type"}' | head -n 1)"
+            if [ -z "$EVENT" ]; then
+              echo "$ISSUE_ID transition is unavailable; skipping it"
+              continue
+            fi
+            PAYLOAD="$(jq -cn --arg id "$STATE_FIELD_ID" --argjson event "$EVENT" '{id: $id, "$type": "StateMachineIssueCustomField", event: $event}')"
+            echo "Applying $ISSUE_ID transition: $STATE"
+            curl --fail-with-body --silent --show-error --dump-header - --request POST \
+              --url "$YOUTRACK_URL/api/issues/$ISSUE_ID/fields/$STATE_FIELD_ID" \
+              --header "Authorization: Bearer $YOUTRACK_TOKEN" \
+              --header "Accept: application/json" \
+              --header "Content-Type: application/json" \
+              --data-raw "$PAYLOAD"
+          done
